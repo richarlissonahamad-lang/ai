@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AraLowkey AI — Dashboard WhatsApp</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;600;700&family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --gold: #c9a84c; --gold-l: #e8c97a; --gold-dim: rgba(201,168,76,0.12);
+      --dark: #080808; --d2: #0f0f0f; --d3: #161616; --d4: #1e1e1e; --d5: #272727;
+      --text: #e8e4dc; --mid: #b0aa9f; --dim: #5a5550;
+      --green: #25D366; --green-d: rgba(37,211,102,0.12);
+      --red: #e74c3c; --red-d: rgba(231,76,60,0.12);
+      --blue: #5b9bd5; --blue-d: rgba(91,155,213,0.12);
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth}
+    body{background:var(--dark);color:var(--text);font-family:'Syne',sans-serif;font-size:14px;min-height:100vh;overflow-x:hidden}
+    body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");opacity:.02;pointer-events:none;z-index:999}
+    ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:var(--gold);border-radius:2px}
+
+    /* ── LAYOUT ── */
+    .app{display:grid;grid-template-columns:260px 1fr;grid-template-rows:auto 1fr;min-height:100vh}
+    .topbar{grid-column:1/-1;background:var(--d2);border-bottom:1px solid rgba(201,168,76,.1);padding:0 28px;height:60px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+    .sidebar{background:var(--d2);border-right:1px solid rgba(255,255,255,.04);padding:20px 0;display:flex;flex-direction:column;gap:2px}
+    .main{padding:28px;overflow-y:auto;background:var(--dark)}
+
+    /* ── LOGO ── */
+    .logo{display:flex;align-items:center;gap:10px}
+    .logo-mark{width:32px;height:32px;border:1.5px solid var(--gold);display:grid;place-items:center;font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:700;color:var(--gold)}
+    .logo-name{font-size:13px;font-weight:800;letter-spacing:.15em;text-transform:uppercase}
+    .logo-name span{color:var(--gold)}
+
+    /* ── STATUS PILL ── */
+    .status-pill{display:flex;align-items:center;gap:8px;padding:6px 14px;border-radius:100px;font-size:11px;font-weight:600;letter-spacing:.1em;font-family:'DM Mono',monospace}
+    .pill-dot{width:7px;height:7px;border-radius:50%}
+    .status-disconnected{background:var(--red-d);color:var(--red)}.status-disconnected .pill-dot{background:var(--red)}
+    .status-connecting,.status-awaiting_code,.status-awaiting_qr,.status-loading{background:rgba(255,165,0,.1);color:orange}.status-connecting .pill-dot,.status-awaiting_code .pill-dot,.status-awaiting_qr .pill-dot,.status-loading .pill-dot{background:orange;animation:blink 1s infinite}
+    .status-connected{background:var(--green-d);color:var(--green)}.status-connected .pill-dot{background:var(--green)}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+    /* ── AI TOGGLE ── */
+    .ai-toggle{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--mid)}
+    .toggle-switch{position:relative;width:42px;height:22px;cursor:pointer}
+    .toggle-switch input{display:none}
+    .toggle-track{position:absolute;inset:0;background:var(--d5);border-radius:11px;transition:.3s}
+    .toggle-thumb{position:absolute;top:3px;left:3px;width:16px;height:16px;background:var(--dim);border-radius:50%;transition:.3s}
+    .toggle-switch input:checked~.toggle-track{background:var(--green-d);border:1px solid var(--green)}
+    .toggle-switch input:checked~.toggle-thumb{left:23px;background:var(--green)}
+
+    /* ── SIDEBAR NAV ── */
+    .nav-item{display:flex;align-items:center;gap:12px;padding:10px 20px;cursor:pointer;color:var(--dim);font-size:12px;font-weight:600;letter-spacing:.05em;transition:.2s;border-left:2px solid transparent}
+    .nav-item:hover{color:var(--text);background:rgba(255,255,255,.02)}
+    .nav-item.active{color:var(--gold);border-left-color:var(--gold);background:var(--gold-dim)}
+    .nav-icon{font-size:16px;width:20px;text-align:center}
+    .nav-sep{height:1px;background:rgba(255,255,255,.04);margin:12px 20px}
+    .nav-label{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.2em;color:var(--dim);padding:10px 20px 4px;text-transform:uppercase}
+
+    /* ── PANELS ── */
+    .panel{display:none}.panel.active{display:block}
+
+    /* ── SECTION TITLE ── */
+    .sec-title{font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:300;margin-bottom:6px}
+    .sec-title em{font-style:italic;color:var(--gold)}
+    .sec-sub{font-size:12px;color:var(--dim);margin-bottom:28px;font-family:'DM Mono',monospace}
+
+    /* ── CARDS ── */
+    .card{background:var(--d3);border:1px solid rgba(255,255,255,.04);padding:24px;margin-bottom:16px}
+    .card-title{font-size:11px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:var(--mid);margin-bottom:16px}
+
+    /* ── STATS GRID ── */
+    .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:2px;margin-bottom:24px}
+    .stat-box{background:var(--d3);padding:20px;border:1px solid rgba(255,255,255,.04)}
+    .stat-num{font-family:'Cormorant Garamond',serif;font-size:36px;font-weight:700;color:var(--gold);line-height:1}
+    .stat-lbl{font-size:10px;color:var(--dim);margin-top:4px;font-family:'DM Mono',monospace;letter-spacing:.1em}
+
+    /* ── CONNECT PANEL ── */
+    .connect-center{max-width:460px;margin:0 auto;text-align:center;padding:40px 0}
+    .connect-icon{font-size:64px;margin-bottom:20px}
+    .connect-title{font-family:'Cormorant Garamond',serif;font-size:36px;font-weight:300;margin-bottom:8px}
+    .connect-desc{color:var(--mid);font-size:13px;line-height:1.7;margin-bottom:32px}
+
+    .phone-input-wrap{position:relative;margin-bottom:16px}
+    .phone-prefix{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-family:'DM Mono',monospace;font-size:14px;color:var(--mid);pointer-events:none}
+    .phone-input{width:100%;padding:14px 14px 14px 56px;background:var(--d4);border:1px solid rgba(255,255,255,.08);color:var(--text);font-family:'DM Mono',monospace;font-size:16px;letter-spacing:.05em;outline:none;transition:.2s}
+    .phone-input:focus{border-color:rgba(201,168,76,.4)}
+    .phone-input::placeholder{color:var(--dim)}
+
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:13px 28px;border:none;cursor:pointer;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;transition:.25s}
+    .btn-gold{background:var(--gold);color:var(--dark)}.btn-gold:hover{background:var(--gold-l)}
+    .btn-outline{background:transparent;border:1px solid rgba(201,168,76,.3);color:var(--gold)}.btn-outline:hover{background:var(--gold-dim)}
+    .btn-red{background:var(--red-d);border:1px solid rgba(231,76,60,.3);color:var(--red)}.btn-red:hover{background:rgba(231,76,60,.2)}
+    .btn-green{background:var(--green-d);border:1px solid rgba(37,211,102,.3);color:var(--green)}.btn-green:hover{background:rgba(37,211,102,.2)}
+    .btn-full{width:100%}
+    .btn:disabled{opacity:.4;cursor:not-allowed}
+
+    /* ── PAIRING CODE BOX ── */
+    .pairing-box{background:var(--d4);border:1px solid rgba(201,168,76,.3);padding:32px;text-align:center;margin-bottom:24px;display:none}
+    .pairing-box.show{display:block}
+    .pairing-label{font-size:11px;color:var(--dim);font-family:'DM Mono',monospace;letter-spacing:.2em;text-transform:uppercase;margin-bottom:16px}
+    .pairing-code{font-family:'DM Mono',monospace;font-size:42px;font-weight:500;color:var(--gold);letter-spacing:.15em;display:block;margin-bottom:16px}
+    .pairing-instructions{font-size:12px;color:var(--mid);line-height:1.8}
+    .pairing-instructions strong{color:var(--text)}
+
+    /* ── QR CODE ── */
+    .qr-box{background:white;padding:16px;display:inline-block;margin-bottom:16px;display:none}
+    .qr-box.show{display:inline-block}
+    .qr-box img{width:200px;height:200px}
+
+    /* ── MESSAGES FEED ── */
+    .messages-feed{display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto}
+    .msg-row{display:flex;gap:12px;padding:12px;background:var(--d4);border:1px solid rgba(255,255,255,.03);animation:fadeIn .3s ease}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+    .msg-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+    .msg-in .msg-avatar{background:var(--d5)}
+    .msg-out .msg-avatar{background:var(--green-d);border:1px solid rgba(37,211,102,.2)}
+    .msg-info{flex:1;min-width:0}
+    .msg-header{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+    .msg-name{font-size:12px;font-weight:700;color:var(--text)}
+    .msg-badge{font-size:9px;padding:2px 7px;border-radius:2px;font-family:'DM Mono',monospace}
+    .badge-in{background:var(--blue-d);color:var(--blue)}
+    .badge-out{background:var(--green-d);color:var(--green)}
+    .msg-time{font-size:10px;color:var(--dim);font-family:'DM Mono',monospace;margin-left:auto}
+    .msg-body{font-size:13px;color:var(--mid);line-height:1.5;white-space:pre-wrap;word-break:break-word}
+
+    /* ── CONTACTS ── */
+    .contact-row{display:flex;align-items:center;gap:12px;padding:12px;background:var(--d4);border:1px solid rgba(255,255,255,.03);margin-bottom:6px;cursor:pointer;transition:.2s}
+    .contact-row:hover{border-color:rgba(201,168,76,.2);background:var(--d3)}
+    .contact-av{width:40px;height:40px;border-radius:50%;background:var(--gold-dim);border:1px solid rgba(201,168,76,.2);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--gold)}
+    .contact-name{font-size:13px;font-weight:600}
+    .contact-last{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
+    .contact-count{margin-left:auto;background:var(--gold-dim);color:var(--gold);font-size:10px;padding:3px 8px;font-family:'DM Mono',monospace}
+
+    /* ── CONFIG FORM ── */
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .form-group{display:flex;flex-direction:column;gap:6px}
+    .form-group.full{grid-column:1/-1}
+    .form-label{font-size:11px;color:var(--dim);font-family:'DM Mono',monospace;letter-spacing:.1em}
+    .form-input,.form-textarea{background:var(--d4);border:1px solid rgba(255,255,255,.06);color:var(--text);padding:10px 12px;font-family:'Syne',sans-serif;font-size:13px;outline:none;transition:.2s}
+    .form-input:focus,.form-textarea:focus{border-color:rgba(201,168,76,.4)}
+    .form-textarea{resize:vertical;min-height:80px;line-height:1.6}
+
+    /* ── PRODUCTS CONFIG ── */
+    .product-list{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+    .product-item{background:var(--d4);border:1px solid rgba(255,255,255,.04);padding:12px;display:flex;align-items:center;gap:12px}
+    .product-item-info{flex:1}
+    .product-item-name{font-size:13px;font-weight:600}
+    .product-item-price{font-size:11px;color:var(--gold);font-family:'DM Mono',monospace}
+    .btn-icon{background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px;padding:4px;transition:.2s}
+    .btn-icon:hover{color:var(--red)}
+
+    /* ── ALERTS ── */
+    .alert{padding:12px 16px;margin-bottom:16px;font-size:12px;border-radius:0;display:none}
+    .alert.show{display:block}
+    .alert-success{background:var(--green-d);border:1px solid rgba(37,211,102,.2);color:var(--green)}
+    .alert-error{background:var(--red-d);border:1px solid rgba(231,76,60,.2);color:var(--red)}
+    .alert-info{background:var(--blue-d);border:1px solid rgba(91,155,213,.2);color:var(--blue)}
+
+    /* ── SEND MSG ── */
+    .send-row{display:flex;gap:8px;margin-top:12px}
+    .send-input{flex:1;padding:10px 12px;background:var(--d4);border:1px solid rgba(255,255,255,.06);color:var(--text);font-family:'Syne',sans-serif;font-size:13px;outline:none}
+    .send-input:focus{border-color:rgba(201,168,76,.4)}
+
+    /* ── RESPONSIVE ── */
+    @media(max-width:768px){
+      .app{grid-template-columns:1fr}
+      .sidebar{display:none}
+      .form-grid{grid-template-columns:1fr}
+      .topbar{padding:0 16px}
+      .main{padding:16px}
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ══ TOPBAR ══ -->
+  <div class="topbar">
+    <div class="logo">
+      <div class="logo-mark">A</div>
+      <div class="logo-name">Ara<span>Lowkey</span> <span style="color:var(--dim);font-weight:400">AI</span></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:20px">
+      <div class="ai-toggle">
+        <span>IA</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="aiToggle" onchange="toggleAI(this.checked)">
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+        <span id="aiLabel" style="font-size:11px;font-family:'DM Mono',monospace">OFF</span>
+      </div>
+      <div class="status-pill status-disconnected" id="statusPill">
+        <div class="pill-dot"></div>
+        <span id="statusText">Déconnecté</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SIDEBAR ══ -->
+  <div class="sidebar">
+    <div style="padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.04);margin-bottom:8px">
+      <div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--dim);letter-spacing:.1em">COMPTE LIÉ</div>
+      <div id="linkedInfo" style="font-size:12px;color:var(--mid);margin-top:4px">—</div>
+    </div>
+
+    <div class="nav-label">Principale</div>
+    <div class="nav-item active" onclick="showPanel('connect')" id="nav-connect">
+      <span class="nav-icon">📱</span> Connexion WA
+    </div>
+    <div class="nav-item" onclick="showPanel('messages')" id="nav-messages">
+      <span class="nav-icon">💬</span> Messages
+    </div>
+    <div class="nav-item" onclick="showPanel('contacts')" id="nav-contacts">
+      <span class="nav-icon">👥</span> Contacts
+    </div>
+
+    <div class="nav-sep"></div>
+    <div class="nav-label">Configuration</div>
+    <div class="nav-item" onclick="showPanel('config')" id="nav-config">
+      <span class="nav-icon">🤖</span> Config IA
+    </div>
+    <div class="nav-item" onclick="showPanel('products')" id="nav-products">
+      <span class="nav-icon">📦</span> Produits
+    </div>
+
+    <div style="flex:1"></div>
+    <div style="padding:16px 20px;border-top:1px solid rgba(255,255,255,.04)">
+      <div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--dim);margin-bottom:8px">STATISTIQUES</div>
+      <div style="display:flex;justify-content:space-between">
+        <div><div id="sideIn" style="font-family:'Cormorant Garamond',serif;font-size:24px;color:var(--green)">0</div><div style="font-size:9px;color:var(--dim)">REÇUS</div></div>
+        <div><div id="sideOut" style="font-family:'Cormorant Garamond',serif;font-size:24px;color:var(--gold)">0</div><div style="font-size:9px;color:var(--dim)">ENVOYÉS</div></div>
+        <div><div id="sideContacts" style="font-family:'Cormorant Garamond',serif;font-size:24px;color:var(--blue)">0</div><div style="font-size:9px;color:var(--dim)">CONTACTS</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MAIN ══ -->
+  <div class="main">
+
+    <!-- ── PANEL: CONNEXION ── -->
+    <div class="panel active" id="panel-connect">
+      <div class="connect-center">
+        <div class="connect-icon">📱</div>
+        <div class="connect-title" style="font-family:'Cormorant Garamond',serif">
+          Connecter votre <em style="color:var(--gold)">WhatsApp</em>
+        </div>
+        <p class="connect-desc">
+          Entrez votre numéro WhatsApp. Vous recevrez un <strong>code de couplage</strong>
+          à entrer dans WhatsApp → Appareils connectés → Lier avec un numéro.
+        </p>
+
+        <div id="connectForm">
+          <div class="phone-input-wrap">
+            <span class="phone-prefix">+</span>
+            <input class="phone-input" id="phoneInput" type="tel"
+              placeholder="212 6XX XXX XXX" maxlength="20"
+              onkeydown="if(event.key==='Enter')connectWA()"/>
+          </div>
+          <button class="btn btn-gold btn-full" onclick="connectWA()" id="connectBtn">
+            📱 Connecter WhatsApp
+          </button>
+        </div>
+
+        <div style="margin-top:24px">
+          <!-- Code de couplage -->
+          <div class="pairing-box" id="pairingBox">
+            <div class="pairing-label">Code de Couplage</div>
+            <span class="pairing-code" id="pairingCode">— — — —</span>
+            <div class="pairing-instructions">
+              Sur votre téléphone :<br>
+              <strong>WhatsApp → ⋮ → Appareils connectés</strong><br>
+              → <strong>Lier un appareil</strong><br>
+              → <strong>Lier avec un numéro de téléphone</strong><br>
+              → Entrer le code ci-dessus
+            </div>
+          </div>
+
+          <!-- QR Code (fallback) -->
+          <div class="qr-box" id="qrBox">
+            <img id="qrImg" src="" alt="QR Code"/>
+          </div>
+
+          <div id="qrLabel" style="display:none;font-size:12px;color:var(--mid);margin-bottom:16px">
+            Scanner avec WhatsApp → Appareils connectés → Lier un appareil
+          </div>
+        </div>
+
+        <!-- Connecté -->
+        <div id="connectedBox" style="display:none;background:var(--green-d);border:1px solid rgba(37,211,102,.2);padding:24px;text-align:center">
+          <div style="font-size:36px;margin-bottom:8px">✅</div>
+          <div style="font-size:16px;font-weight:700;color:var(--green)" id="connectedName">WhatsApp Connecté !</div>
+          <div style="font-size:12px;color:var(--mid);margin:8px 0 20px" id="connectedPhone"></div>
+          <button class="btn btn-red" onclick="disconnectWA()">🔴 Déconnecter</button>
+        </div>
+
+        <div class="alert" id="connectAlert"></div>
+
+        <div style="margin-top:28px;padding:20px;background:var(--d3);border:1px solid rgba(255,255,255,.04);text-align:left">
+          <div style="font-size:11px;font-weight:700;color:var(--gold);letter-spacing:.1em;margin-bottom:10px">⚠️ IMPORTANT</div>
+          <div style="font-size:12px;color:var(--mid);line-height:1.8">
+            • Cette connexion utilise <strong>WhatsApp Web</strong> officiel<br>
+            • Votre téléphone doit rester connecté à internet<br>
+            • L'IA répond à <strong>tous les messages entrants</strong> automatiquement<br>
+            • Vous pouvez désactiver l'IA à tout moment via le toggle en haut
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PANEL: MESSAGES ── -->
+    <div class="panel" id="panel-messages">
+      <h2 class="sec-title">Messages <em>Live</em></h2>
+      <div class="sec-sub">// Flux temps réel — tous les échanges WhatsApp</div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div style="font-size:12px;color:var(--dim)">
+          <span id="msgCount">0</span> messages
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline" onclick="loadMessages()" style="padding:8px 16px;font-size:10px">↻ Actualiser</button>
+          <button class="btn btn-red" onclick="clearMessages()" style="padding:8px 16px;font-size:10px">🗑 Vider</button>
+        </div>
+      </div>
+
+      <!-- Envoyer un message manuel -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-title">📤 Envoyer un message</div>
+        <div class="send-row">
+          <input class="send-input" id="sendTo" placeholder="Numéro: 212 6XX XXXXXX" style="max-width:200px"/>
+          <input class="send-input" id="sendMsg" placeholder="Message..." style="flex:1" onkeydown="if(event.key==='Enter')sendManual()"/>
+          <button class="btn btn-gold" onclick="sendManual()" style="padding:10px 20px;font-size:11px">Envoyer</button>
+        </div>
+      </div>
+
+      <div class="messages-feed" id="messagesFeed">
+        <div style="text-align:center;padding:40px;color:var(--dim);font-size:13px">
+          💬 En attente de messages...
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PANEL: CONTACTS ── -->
+    <div class="panel" id="panel-contacts">
+      <h2 class="sec-title">Contacts <em>actifs</em></h2>
+      <div class="sec-sub">// Tous les contacts qui ont écrit via WhatsApp</div>
+      <div id="contactsList">
+        <div style="text-align:center;padding:40px;color:var(--dim)">Aucun contact encore.</div>
+      </div>
+    </div>
+
+    <!-- ── PANEL: CONFIG IA ── -->
+    <div class="panel" id="panel-config">
+      <h2 class="sec-title">Config <em>IA</em></h2>
+      <div class="sec-sub">// Personnalisez le comportement de votre assistant</div>
+
+      <div class="alert alert-success" id="configAlert">✅ Configuration sauvegardée !</div>
+
+      <div class="card">
+        <div class="card-title">🏢 Informations de la boutique</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Nom de la boutique</label><input class="form-input" id="cfg-businessName" placeholder="Ma Boutique"/></div>
+          <div class="form-group"><label class="form-label">Devise</label><input class="form-input" id="cfg-currency" placeholder="MAD"/></div>
+          <div class="form-group"><label class="form-label">Téléphone</label><input class="form-input" id="cfg-phone" placeholder="+212 600 000 000"/></div>
+          <div class="form-group"><label class="form-label">Instagram</label><input class="form-input" id="cfg-instagram" placeholder="@maboutique"/></div>
+          <div class="form-group"><label class="form-label">Email</label><input class="form-input" id="cfg-email" placeholder="contact@boutique.ma"/></div>
+          <div class="form-group"><label class="form-label">Délai de réponse (ms)</label><input class="form-input" id="cfg-delay" type="number" placeholder="1500" min="500" max="10000"/></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🤖 Persona de l'IA</div>
+        <div class="form-grid">
+          <div class="form-group full"><label class="form-label">Message d'accueil</label><input class="form-input" id="cfg-greeting" placeholder="Salam wa alaykoum ! 👋 Mrahba bik"/></div>
+          <div class="form-group full"><label class="form-label">Introduction</label><input class="form-input" id="cfg-intro" placeholder="Ana l-assistant IA dyalkom..."/></div>
+          <div class="form-group full"><label class="form-label">Réponse merci</label><input class="form-input" id="cfg-thankYou" placeholder="Barak Allah fik ! 🌟"/></div>
+          <div class="form-group full"><label class="form-label">Clôture de commande</label><input class="form-input" id="cfg-closing" placeholder="Shokran bzaf ! Tbark Allah 🌟"/></div>
+          <div class="form-group full"><label class="form-label">Réponse par défaut</label><textarea class="form-textarea" id="cfg-defaultReply" placeholder="Shokran ! Kifach naa3wenk ?..."></textarea></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📋 Infos personnalisées</div>
+        <div class="form-grid">
+          <div class="form-group full"><label class="form-label">Info livraison</label><textarea class="form-textarea" id="cfg-delivery" placeholder="🚚 Livraison 24-48h partout au Maroc..."></textarea></div>
+          <div class="form-group full"><label class="form-label">Info paiement</label><textarea class="form-textarea" id="cfg-payment" placeholder="💳 Paiement à la livraison disponible..."></textarea></div>
+          <div class="form-group full"><label class="form-label">Promos & offres</label><textarea class="form-textarea" id="cfg-promo" placeholder="🎉 Offres spéciales cette semaine..."></textarea></div>
+          <div class="form-group full"><label class="form-label">Horaires</label><input class="form-input" id="cfg-hours" placeholder="Lun-Sam: 9h-21h · Dim: 10h-18h"/></div>
+        </div>
+      </div>
+
+      <button class="btn btn-gold" onclick="saveConfig()" style="width:100%;margin-top:8px">💾 Sauvegarder la configuration</button>
+    </div>
+
+    <!-- ── PANEL: PRODUITS ── -->
+    <div class="panel" id="panel-products">
+      <h2 class="sec-title">Gestion <em>Produits</em></h2>
+      <div class="sec-sub">// L'IA peut présenter ces produits et répondre sur leurs prix</div>
+
+      <div class="card">
+        <div class="card-title">➕ Ajouter un produit</div>
+        <div class="form-grid">
+          <div class="form-group"><label class="form-label">Nom du produit</label><input class="form-input" id="p-name" placeholder="Pack Soins Visage"/></div>
+          <div class="form-group"><label class="form-label">Prix</label><input class="form-input" id="p-price" type="number" placeholder="299"/></div>
+          <div class="form-group"><label class="form-label">Ancien prix (optionnel)</label><input class="form-input" id="p-oldPrice" type="number" placeholder="499"/></div>
+          <div class="form-group full"><label class="form-label">Description</label><input class="form-input" id="p-desc" placeholder="Description courte du produit..."/></div>
+        </div>
+        <button class="btn btn-outline" onclick="addProduct()" style="margin-top:12px">➕ Ajouter</button>
+      </div>
+
+      <div class="card-title" style="margin:20px 0 12px">📦 Catalogue actuel</div>
+      <div class="product-list" id="productsList">
+        <div style="color:var(--dim);font-size:12px">Aucun produit configuré.</div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+// ══════════════════════════════════════════
+//  SOCKET.IO
+// ══════════════════════════════════════════
+const socket = io();
+
+socket.on('status', (data) => {
+  updateStatus(data.status, data.message);
+  if (data.status === 'connected' && data.info) {
+    showConnected(data.info);
+  }
+});
+
+socket.on('pairing_code', (data) => {
+  document.getElementById('pairingBox').classList.add('show');
+  document.getElementById('pairingCode').textContent = data.code;
+  document.getElementById('qrBox').classList.remove('show');
+  document.getElementById('qrLabel').style.display = 'none';
+});
+
+socket.on('qr_code', (data) => {
+  document.getElementById('qrBox').classList.add('show');
+  document.getElementById('qrImg').src = data.qr;
+  document.getElementById('qrLabel').style.display = 'block';
+  document.getElementById('pairingBox').classList.remove('show');
+});
+
+socket.on('connected', (info) => {
+  showConnected(info);
+  showAlert('connectAlert', `✅ WhatsApp connecté — ${info.name} (${info.phone})`, 'success');
+});
+
+socket.on('disconnected', () => {
+  document.getElementById('connectedBox').style.display = 'none';
+  document.getElementById('connectForm').style.display = 'block';
+  document.getElementById('pairingBox').classList.remove('show');
+  document.getElementById('qrBox').classList.remove('show');
+});
+
+socket.on('new_message', (msg) => {
+  prependMessage(msg);
+  updateSideStats();
+});
+
+socket.on('init_data', (data) => {
+  // Messages
+  if (data.messages && data.messages.length) {
+    renderMessages(data.messages);
+  }
+  // Contacts
+  if (data.contacts && data.contacts.length) {
+    renderContacts(data.contacts);
+  }
+  // Stats
+  if (data.stats) {
+    document.getElementById('sideIn').textContent = data.stats.totalIn || 0;
+    document.getElementById('sideOut').textContent = data.stats.totalOut || 0;
+    document.getElementById('sideContacts').textContent = (data.contacts||[]).length;
+  }
+  // Config
+  if (data.aiConfig) loadConfigToForm(data.aiConfig);
+  // AI toggle
+  if (typeof data.aiActive === 'boolean') {
+    document.getElementById('aiToggle').checked = data.aiActive;
+    document.getElementById('aiLabel').textContent = data.aiActive ? 'ON' : 'OFF';
+  }
+});
+
+socket.on('ai_toggled', (data) => {
+  document.getElementById('aiToggle').checked = data.active;
+  document.getElementById('aiLabel').textContent = data.active ? 'ON' : 'OFF';
+});
+
+socket.on('config_updated', (cfg) => {
+  loadConfigToForm(cfg);
+});
+
+// ══════════════════════════════════════════
+//  STATUS UI
+// ══════════════════════════════════════════
+function updateStatus(status, message) {
+  const pill = document.getElementById('statusPill');
+  const txt  = document.getElementById('statusText');
+  pill.className = `status-pill status-${status}`;
+  const labels = {
+    disconnected: 'Déconnecté',
+    connecting:   'Connexion...',
+    awaiting_code:'Code envoyé',
+    awaiting_qr:  'Scanner QR',
+    loading:      'Chargement...',
+    connected:    'Connecté',
+    error:        'Erreur'
+  };
+  txt.textContent = labels[status] || message;
+}
+
+// ══════════════════════════════════════════
+//  CONNEXION WHATSAPP
+// ══════════════════════════════════════════
+async function connectWA() {
+  const phone = document.getElementById('phoneInput').value.trim();
+  if (!phone) { showAlert('connectAlert', '⚠️ Entrez votre numéro WhatsApp', 'error'); return; }
+
+  const btn = document.getElementById('connectBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Initialisation...';
+
+  try {
+    const res = await fetch('/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    showAlert('connectAlert', '📱 En cours... Le code va apparaître dans quelques secondes.', 'info');
+  } catch (err) {
+    showAlert('connectAlert', `❌ Erreur: ${err.message}`, 'error');
+    btn.disabled = false;
+    btn.textContent = '📱 Connecter WhatsApp';
+  }
+}
+
+async function disconnectWA() {
+  await fetch('/disconnect', { method: 'POST' });
+}
+
+function showConnected(info) {
+  document.getElementById('connectForm').style.display = 'none';
+  document.getElementById('pairingBox').classList.remove('show');
+  document.getElementById('qrBox').classList.remove('show');
+  document.getElementById('connectedBox').style.display = 'block';
+  document.getElementById('connectedName').textContent = `✅ ${info.name}`;
+  document.getElementById('connectedPhone').textContent = `+${info.phone}`;
+  document.getElementById('linkedInfo').textContent = `${info.name} · +${info.phone}`;
+
+  const btn = document.getElementById('connectBtn');
+  btn.disabled = false;
+  btn.textContent = '📱 Connecter WhatsApp';
+}
+
+// ══════════════════════════════════════════
+//  MESSAGES
+// ══════════════════════════════════════════
+async function loadMessages() {
+  const res = await fetch('/messages');
+  const data = await res.json();
+  renderMessages(data.messages || []);
+}
+
+function renderMessages(msgs) {
+  const feed = document.getElementById('messagesFeed');
+  if (!msgs.length) {
+    feed.innerHTML = '<div style="text-align:center;padding:40px;color:var(--dim);font-size:13px">💬 Aucun message encore.</div>';
+    return;
+  }
+  feed.innerHTML = msgs.map(buildMsgRow).join('');
+  document.getElementById('msgCount').textContent = msgs.length;
+}
+
+function prependMessage(msg) {
+  const feed = document.getElementById('messagesFeed');
+  const placeholder = feed.querySelector('[style*="Aucun message"]') || feed.querySelector('[style*="En attente"]');
+  if (placeholder) feed.innerHTML = '';
+
+  const div = document.createElement('div');
+  div.innerHTML = buildMsgRow(msg);
+  feed.insertBefore(div.firstChild, feed.firstChild);
+
+  const c = parseInt(document.getElementById('msgCount').textContent || '0');
+  document.getElementById('msgCount').textContent = c + 1;
+}
+
+function buildMsgRow(msg) {
+  const isOut  = msg.type === 'out';
+  const time   = new Date(msg.time).toLocaleTimeString('fr-MA', { hour: '2-digit', minute: '2-digit' });
+  const name   = isOut ? '🤖 IA' : (msg.name || msg.from || 'Inconnu');
+  const badge  = isOut ? '<span class="msg-badge badge-out">IA</span>' : '<span class="msg-badge badge-in">MSG</span>';
+  const avatar = isOut ? '🤖' : (msg.name ? msg.name[0].toUpperCase() : '?');
+  const cls    = isOut ? 'msg-out' : 'msg-in';
+
+  return `<div class="msg-row ${cls}">
+    <div class="msg-avatar">${avatar}</div>
+    <div class="msg-info">
+      <div class="msg-header">
+        <span class="msg-name">${escHtml(name)}</span>
+        ${badge}
+        <span class="msg-time">${time}</span>
+      </div>
+      <div class="msg-body">${escHtml(msg.body)}</div>
+    </div>
+  </div>`;
+}
+
+async function clearMessages() {
+  if (!confirm('Vider tout l\'historique ?')) return;
+  await fetch('/messages', { method: 'DELETE' });
+  document.getElementById('messagesFeed').innerHTML = '<div style="text-align:center;padding:40px;color:var(--dim)">Historique vidé.</div>';
+  document.getElementById('msgCount').textContent = '0';
+}
+
+async function sendManual() {
+  const to  = document.getElementById('sendTo').value.trim();
+  const msg = document.getElementById('sendMsg').value.trim();
+  if (!to || !msg) return;
+
+  try {
+    await fetch('/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to, message: msg })
+    });
+    document.getElementById('sendMsg').value = '';
+  } catch (err) {
+    alert('Erreur: ' + err.message);
+  }
+}
+
+// ══════════════════════════════════════════
+//  CONTACTS
+// ══════════════════════════════════════════
+async function loadContacts() {
+  const res = await fetch('/contacts');
+  const data = await res.json();
+  renderContacts(data.contacts || []);
+}
+
+function renderContacts(contacts) {
+  const list = document.getElementById('contactsList');
+  document.getElementById('sideContacts').textContent = contacts.length;
+  if (!contacts.length) {
+    list.innerHTML = '<div style="color:var(--dim);padding:20px;font-size:13px">Aucun contact encore.</div>';
+    return;
+  }
+  list.innerHTML = contacts.sort((a,b)=>new Date(b.lastTime)-new Date(a.lastTime)).map(c => `
+    <div class="contact-row" onclick="startChat('${c.id}')">
+      <div class="contact-av">${(c.name||'?')[0].toUpperCase()}</div>
+      <div style="flex:1;min-width:0">
+        <div class="contact-name">${escHtml(c.name||c.id)}</div>
+        <div class="contact-last">${escHtml(c.lastMsg||'')}</div>
+      </div>
+      <span class="contact-count">${c.msgCount||0}</span>
+    </div>
+  `).join('');
+}
+
+function startChat(id) {
+  document.getElementById('sendTo').value = id.replace('@c.us','');
+  showPanel('messages');
+}
+
+function updateSideStats() {
+  fetch('/stats').then(r=>r.json()).then(d=>{
+    document.getElementById('sideIn').textContent  = d.totalIn  || 0;
+    document.getElementById('sideOut').textContent = d.totalOut || 0;
+  });
+}
+
+// ══════════════════════════════════════════
+//  CONFIG IA
+// ══════════════════════════════════════════
+function loadConfigToForm(cfg) {
+  const b = cfg.business || {}, p = cfg.persona || {};
+  const set = (id, val) => { const el = document.getElementById(id); if(el && val) el.value = val; };
+  set('cfg-businessName', b.name);
+  set('cfg-currency',     b.currency);
+  set('cfg-phone',        b.phone);
+  set('cfg-instagram',    b.instagram);
+  set('cfg-email',        b.email);
+  set('cfg-delivery',     b.deliveryInfo);
+  set('cfg-payment',      b.paymentInfo);
+  set('cfg-promo',        b.promoInfo);
+  set('cfg-hours',        b.hours);
+  set('cfg-greeting',     p.greeting);
+  set('cfg-intro',        p.intro);
+  set('cfg-thankYou',     p.thankYou);
+  set('cfg-closing',      p.closingPhrase);
+  set('cfg-defaultReply', p.defaultReply);
+  set('cfg-delay',        cfg.replyDelay || 1500);
+
+  // Produits
+  if (cfg.products) renderProductList(cfg.products);
+}
+
+async function saveConfig() {
+  const get = (id) => document.getElementById(id)?.value || '';
+  const cfg = {
+    business: {
+      name:         get('cfg-businessName'),
+      currency:     get('cfg-currency') || 'MAD',
+      phone:        get('cfg-phone'),
+      instagram:    get('cfg-instagram'),
+      email:        get('cfg-email'),
+      deliveryInfo: get('cfg-delivery'),
+      paymentInfo:  get('cfg-payment'),
+      promoInfo:    get('cfg-promo'),
+      hours:        get('cfg-hours')
+    },
+    persona: {
+      greeting:      get('cfg-greeting'),
+      intro:         get('cfg-intro'),
+      thankYou:      get('cfg-thankYou'),
+      closingPhrase: get('cfg-closing'),
+      defaultReply:  get('cfg-defaultReply')
+    },
+    replyDelay: parseInt(get('cfg-delay')) || 1500
+  };
+
+  const res = await fetch('/ai-config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cfg)
+  });
+  if (res.ok) showAlert('configAlert', '✅ Configuration sauvegardée !', 'success');
+}
+
+// ══════════════════════════════════════════
+//  PRODUITS
+// ══════════════════════════════════════════
+let localProducts = [];
+
+async function addProduct() {
+  const name     = document.getElementById('p-name').value.trim();
+  const price    = parseFloat(document.getElementById('p-price').value);
+  const oldPrice = parseFloat(document.getElementById('p-oldPrice').value) || null;
+  const desc     = document.getElementById('p-desc').value.trim();
+
+  if (!name || !price) { alert('Nom et prix requis !'); return; }
+
+  localProducts.push({ id: Date.now(), name, price, oldPrice, description: desc });
+
+  // Clear form
+  ['p-name','p-price','p-oldPrice','p-desc'].forEach(id => document.getElementById(id).value = '');
+
+  await saveProducts();
+  renderProductList(localProducts);
+}
+
+async function removeProduct(id) {
+  localProducts = localProducts.filter(p => p.id !== id);
+  await saveProducts();
+  renderProductList(localProducts);
+}
+
+async function saveProducts() {
+  // Récupérer config actuelle et mettre à jour les produits
+  const res = await fetch('/ai-config');
+  const cfg = await res.json();
+  cfg.products = localProducts;
+  await fetch('/ai-config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cfg)
+  });
+}
+
+function renderProductList(products) {
+  localProducts = products;
+  const list = document.getElementById('productsList');
+  if (!products.length) {
+    list.innerHTML = '<div style="color:var(--dim);font-size:12px">Aucun produit configuré.</div>';
+    return;
+  }
+  list.innerHTML = products.map(p => `
+    <div class="product-item">
+      <div class="product-item-info">
+        <div class="product-item-name">${escHtml(p.name)}</div>
+        <div class="product-item-price">${p.price} MAD${p.oldPrice ? ` (ancien: ${p.oldPrice})` : ''}</div>
+        ${p.description ? `<div style="font-size:11px;color:var(--dim);margin-top:2px">${escHtml(p.description)}</div>` : ''}
+      </div>
+      <button class="btn-icon" onclick="removeProduct(${p.id})">🗑</button>
+    </div>
+  `).join('');
+}
+
+// ══════════════════════════════════════════
+//  AI TOGGLE
+// ══════════════════════════════════════════
+async function toggleAI(checked) {
+  document.getElementById('aiLabel').textContent = checked ? 'ON' : 'OFF';
+  await fetch('/toggle-ai', { method: 'POST' });
+}
+
+// ══════════════════════════════════════════
+//  NAV
+// ══════════════════════════════════════════
+function showPanel(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById(`panel-${name}`)?.classList.add('active');
+  document.getElementById(`nav-${name}`)?.classList.add('active');
+
+  if (name === 'messages') loadMessages();
+  if (name === 'contacts') loadContacts();
+}
+
+// ══════════════════════════════════════════
+//  UTILS
+// ══════════════════════════════════════════
+function showAlert(id, msg, type) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = `alert alert-${type} show`;
+  setTimeout(() => el.classList.remove('show'), 4000);
+}
+
+function escHtml(str) {
+  return (str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+</script>
+</body>
+</html>

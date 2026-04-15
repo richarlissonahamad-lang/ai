@@ -1,0 +1,33 @@
+{
+  "messages": [],
+  "contacts": [],
+  "linkedPhone": null,
+  "linkedName": null,
+  "stats": {
+    "totalIn": 0,
+    "totalOut": 0
+  },
+  "aiConfig": {
+    "persona": {
+      "greeting": "Salam wa alaykoum ! 👋 Mrahba bik",
+      "intro": "Ana l-assistant IA dyalkom. Kifach naa3wenk ?",
+      "thankYou": "Barak Allah fik ! 🌟 Nshaallah tlga kolchi mzyan !",
+      "closingPhrase": "Shokran bzaf ! Tbark Allah 🌟",
+      "defaultReply": "Shokran ! Kifach naa3wenk ? Sou9 liha chi so'al 😊"
+    },
+    "business": {
+      "name": "Ma Boutique",
+      "phone": "",
+      "instagram": "",
+      "email": "",
+      "currency": "MAD",
+      "deliveryInfo": "🚚 Livraison 24-48h partout au Maroc ! Paiement à la livraison disponible.",
+      "paymentInfo": "💳 Paiement à la livraison (COD) · Virement · Wafacash",
+      "promoInfo": "🎉 Livraison GRATUITE dès 500 MAD ! -10% pour les nouveaux clients.",
+      "hours": "Lun-Sam: 9h-21h · Dim: 10h-18h · IA disponible 24/7 🤖"
+    },
+    "products": [],
+    "aiActive": true,
+    "replyDelay": 1500
+  }
+}
